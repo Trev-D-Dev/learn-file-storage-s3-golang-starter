@@ -38,20 +38,23 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	err = r.ParseMultipartForm(maxMemory)
 	if err != nil {
-
+		respondWithError(w, http.StatusBadRequest, "Couldn't parse multipart form", err)
+		return
 	}
 
 	// Get the image data from the form
 	fileData, fileHeader, err := r.FormFile("thumbnail")
 	if err != nil {
-
+		respondWithError(w, http.StatusBadRequest, "Error retrieving thumbnail", err)
+		return
 	}
 	mediaType := fileHeader.Header.Get("Content-Type")
 
 	// Read image data into a byte slice
 	imageData, err := io.ReadAll(fileData)
 	if err != nil {
-
+		respondWithError(w, http.StatusBadRequest, "Error reading from file data", err)
+		return
 	}
 
 	// Get video's metadata from the SQLite database
@@ -69,12 +72,13 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	videoThumbnails[videoID] = thumb
 
 	// Update the video metadata so it has a new thumbnail URL
-	thumbURL := fmt.Sprintf("/api/thumbnails/%v", videoID)
+	thumbURL := fmt.Sprintf("http://localhost:%v/api/thumbnails/%v", cfg.port, videoID)
 	dbVideo.ThumbnailURL = &thumbURL
 	err = cfg.db.UpdateVideo(dbVideo)
 	if err != nil {
-
+		respondWithError(w, http.StatusBadRequest, "Error updating video in database", err)
+		return
 	}
 
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	respondWithJSON(w, http.StatusOK, dbVideo)
 }
