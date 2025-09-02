@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -79,7 +81,19 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	thumbNameAndExt := fmt.Sprintf("%v.%v", dbVideo.ID, mediaExt)
+	byteSlice := make([]byte, 32)
+	num, err := rand.Read(byteSlice)
+	if num != 32 {
+		respondWithError(w, http.StatusBadRequest, "Byte slice was not filled fully", nil)
+		return
+	} else if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error filling byte slice", err)
+		return
+	}
+
+	fileName := base64.RawURLEncoding.EncodeToString(byteSlice)
+
+	thumbNameAndExt := fmt.Sprintf("%v.%v", fileName, mediaExt)
 
 	fileURL := fmt.Sprintf("http://localhost:%v/assets/%v", cfg.port, thumbNameAndExt)
 	filePath := filepath.Join(cfg.assetsRoot, thumbNameAndExt)
