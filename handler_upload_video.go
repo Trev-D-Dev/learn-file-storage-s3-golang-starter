@@ -120,4 +120,5 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	dbVideo.VideoURL = &s3URL
 	cfg.db.UpdateVideo(dbVideo)
+
 }
