@@ -100,8 +100,14 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	aspect, err := getVideoAspectRatio(file.Name())
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error retrieving aspect ratio", err)
+		return
+	}
+
 	fileName := base64.RawURLEncoding.EncodeToString(byteSlice)
-	key := fmt.Sprintf("%v.mp4", fileName)
+	key := fmt.Sprintf("%v/%v.mp4", aspect, fileName)
 
 	// Put object into S3
 	_, err = cfg.s3Client.PutObject(context.Background(), &s3.PutObjectInput{
@@ -120,5 +126,4 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	dbVideo.VideoURL = &s3URL
 	cfg.db.UpdateVideo(dbVideo)
-
 }
