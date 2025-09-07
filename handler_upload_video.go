@@ -89,6 +89,20 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	outPath, err := processVideoForFastStart(file.Name())
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error processing video", err)
+		return
+	}
+	defer os.Remove(outPath)
+
+	processFile, err := os.Open(outPath)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error opening file", err)
+		return
+	}
+	defer processFile.Close()
+
 	// Generate key
 	byteSlice := make([]byte, 32)
 	num, err := rand.Read(byteSlice)
@@ -113,7 +127,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	_, err = cfg.s3Client.PutObject(context.Background(), &s3.PutObjectInput{
 		Bucket:      aws.String("tubely-6543210"),
 		Key:         aws.String(key),
-		Body:        file,
+		Body:        processFile,
 		ContentType: aws.String("video/mp4"),
 	})
 	if err != nil {
