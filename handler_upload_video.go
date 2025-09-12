@@ -9,10 +9,13 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 	"github.com/google/uuid"
 )
 
@@ -125,7 +128,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	// Put object into S3
 	_, err = cfg.s3Client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket:      aws.String("tubely-6543210"),
+		Bucket:      aws.String("tubely-private-76543210"),
 		Key:         aws.String(key),
 		Body:        processFile,
 		ContentType: aws.String("video/mp4"),
@@ -136,8 +139,69 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Update videoURL in database with s3 bucket and key
-	s3URL := fmt.Sprintf("https://%v.s3.%v.amazonaws.com/%v", cfg.s3Bucket, cfg.s3Region, key)
+	//s3URL := fmt.Sprintf("https://%v.s3.%v.amazonaws.com/%v", cfg.s3Bucket, cfg.s3Region, key)
 
-	dbVideo.VideoURL = &s3URL
+	commaDelString := fmt.Sprintf("%s,%s", cfg.s3Bucket, key)
+
+	//dbVideo.VideoURL = &s3URL
+
+	dbVideo.VideoURL = &commaDelString
+	dbVideo, err = cfg.dbVideoToSignedVideo(dbVideo)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error signing video", err)
+		return
+	}
+
 	cfg.db.UpdateVideo(dbVideo)
+}
+
+func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime time.Duration) (string, error) {
+
+	presClient := s3.NewPresignClient(s3Client)
+
+	presReq, err := presClient.PresignGetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(expireTime))
+	if err != nil {
+		return "", err
+	}
+
+	return presReq.URL, nil
+}
+
+func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
+	if video.VideoURL == nil {
+		return video, nil
+	}
+
+	raw := strings.TrimSpace(*video.VideoURL)
+	if raw == "" {
+		return video, nil
+	}
+
+	videoURLInfo := strings.Split(*video.VideoURL, ",")
+
+	if len(videoURLInfo) != 2 {
+		return video, nil
+	}
+
+	bucket := strings.TrimSpace(videoURLInfo[0])
+	key := strings.TrimSpace(videoURLInfo[1])
+
+	if bucket == "" || key == "" {
+		return video, fmt.Errorf("empty bucket or key")
+	}
+	if cfg.s3Client == nil {
+		return video, fmt.Errorf("s3 client is nil")
+	}
+
+	presURL, err := generatePresignedURL(cfg.s3Client, bucket, key, time.Minute)
+	if err != nil {
+		return video, err
+	}
+
+	video.VideoURL = &presURL
+
+	return video, nil
 }
